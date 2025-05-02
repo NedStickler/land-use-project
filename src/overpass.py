@@ -2,32 +2,38 @@
 import overpy
 import geopandas as gpd
 from shapely.geometry import Polygon
+from tqdm import tqdm
 
 
 class OverpassAPI:
     def __init__(self) -> None:
-        self.api = overpy.Overpass()
-
-    def _query_overpass(self, query: str) -> overpy.Result:
-        return self.api.query(query)
+        self._api = overpy.Overpass()
     
     def _get_bbox_landuse(self, bbox: tuple[float, float, float, float]) -> overpy.Result:
+        print("Querying Overpass API...")
         query = f"""
-            [out:json];
             wr["landuse"]({bbox[0]}, {bbox[1]}, {bbox[2]}, {bbox[3]});
+            (._;>;);
             out body;
             """
-        return self._query_overpass(query)
+        return self._api.query(query)
     
     def _overpass_result_to_gdf(self, result: overpy.Result) -> gpd.GeoDataFrame:
+        print("Converting to GeoDataFrame...")
         geoms = []
-        for way in result.ways:
-            coords = [(node.lon, node.lat) for node in way.nodes]
-            
-            if coords:
-                polygon = Polygon(coords)
-                geoms.append(polygon)
-        return gpd.GeoDataFrame(geoms, crs="EPSG:4326")
+        land_use = []
+        for way in tqdm(result.ways):
+            try:
+                coords = [(node.lon, node.lat) for node in way.nodes]
+                
+                if coords:
+                    polygon = Polygon(coords)
+                    geoms.append(polygon)
+                    land_use.append(way.tags.get("landuse"))
+            except:
+                pass
+
+        return gpd.GeoDataFrame({"geometry": geoms, "landuse": land_use}, crs="EPSG:4326")
     
     def get_land_use_gdf(self, bbox: tuple[float, float, float, float])-> gpd.GeoDataFrame:
         result = self._get_bbox_landuse(bbox)
@@ -37,6 +43,5 @@ class OverpassAPI:
 if __name__ == "__main__":
     overpass_api = OverpassAPI()
 
-    bbox = (43.73129909633757, 7.415686982253379, 43.73942132881274, 7.42613427246315)
+    bbox = (51.24613621117362, -0.5206335385957582, 51.697294958769845, 0.2820596718485233)
     gdf = overpass_api.get_land_use_gdf(bbox)
-    print(gdf)
